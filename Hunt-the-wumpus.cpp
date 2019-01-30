@@ -26,12 +26,16 @@
 #include<vector>
 #include<algorithm>
 #include<limits>
+#include<ctime>
 
 constexpr int ROOMS = 20;
 constexpr int BATS = 3;
 constexpr int PITS = 3;
 
-constexpr int END_GAME = -1;
+enum class GameState
+{
+    END_GAME, CONTINUE
+};
 
 struct Room
 {
@@ -62,7 +66,7 @@ void Player::setAdjRooms()
     adjRooms[2] = (currRoom-t+20)%ROOMS;
 }
 
-class Map
+class Game
 {
     std::vector<Room> cave{std::vector<Room>(20)};
     std::vector<int> vacant; //vector to keep track of empty rooms
@@ -75,19 +79,19 @@ class Map
     void addPlayer();
 
     void reportState();
-    int input();
+    GameState input();
 
-    int movePlayer(int);
-    int shoot(int target);
+    GameState movePlayer(int);
+    GameState shoot(int target);
     void batEncounter();
-    int moveWump();
+    GameState moveWump();
 public:
-    void init();
+    Game();
     void play();
     void printState(); //Only for debugging. Not part of the game.
 };
 
-void Map::addPlayer()
+void Game::addPlayer()
 //spawn player
 {
     int r = rand()%vacant.size();
@@ -102,7 +106,7 @@ void Map::addPlayer()
         vacant.erase(std::find(vacant.begin(),vacant.end(),p.getAdj(i)));
 }
 
-void Map::addWump()
+void Game::addWump()
 //spawns the wumpus in a random room
 {
     int r = rand()%vacant.size();
@@ -111,7 +115,7 @@ void Map::addWump()
     vacant.erase(vacant.begin()+r); //remove vacancy
 }
 
-void Map::addBats()
+void Game::addBats()
 //spawns bats
 {
     for(int i = 0; i < BATS; ++i){
@@ -122,7 +126,7 @@ void Map::addBats()
     }
 }
 
-void Map::addPits()
+void Game::addPits()
 //place pits
 {
     for(int i = 0; i < PITS; ++i){
@@ -133,7 +137,7 @@ void Map::addPits()
     }
 }
 
-void Map::printState()
+void Game::printState()
 //for debugging
 {
     for(int i = 0; i < ROOMS; ++i){
@@ -148,7 +152,7 @@ void Map::printState()
     }
 }
 
-void Map::reportState()
+void Game::reportState()
 {
     std::cout << "You are in room " << p.room() << std::endl;
     std::cout << "Adjacent rooms are " << p.getAdj(0) <<", "<<p.getAdj(1)
@@ -164,11 +168,11 @@ void Map::reportState()
         std::cout << "I smell the wumpus." << std::endl;
 }
 
-int Map::movePlayer(int pos)
+GameState Game::movePlayer(int pos)
 {
     if(pos != p.getAdj(0) && pos != p.getAdj(1) && pos != p.getAdj(2)){
         std::cout << "Invalid choice. Please move to an ADJACENT room." << std::endl;
-        return 0;
+        return GameState::CONTINUE;
     }
     cave[p.room()].player = false;
     cave[pos].player = true;
@@ -177,51 +181,55 @@ int Map::movePlayer(int pos)
 
     if(cave[p.room()].wump){
         std::cout << "The Wumpus got you! YOU LOSE." << std::endl;
-        return END_GAME;
+        return GameState::END_GAME;
     }
     if(cave[p.room()].pit){
         std::cout << "You fell into a bottomless pit! YOU LOSE." << std::endl;
-        return END_GAME;
+        return GameState::END_GAME;
     }
     if(cave[p.room()].bat){
         std::cout << "A giant bat takes you to another room!" << std::endl;
         batEncounter();
-        return 0;
+        return GameState::CONTINUE;
     }
+    
+    return GameState::CONTINUE;
 }
 
-int Map::moveWump()
+GameState Game::moveWump()
 //move wumpus to a random adjacent room
 {
     int r = rand()%3;
     int pos = 0;
-    for(; !(cave[pos].wump); ++pos); //get the room that contains the wumpus
-    cave[pos].wump = false;
+    for(; !(cave[pos].wump) && (pos < cave.size()); ++pos); //get the room that contains the wumpus
     if((cave[pos].wump && !(cave[pos].bat)) || (cave[pos].wump && !(cave[pos].pit)))
         vacant.push_back(pos);
+    cave[pos].wump = false;
     cave[cave[pos].adjRooms[r]].wump = true;
     if(cave[cave[pos].adjRooms[r]].player){
         std::cout << "The Wumpus got you! YOU LOSE." << std::endl;
-        return END_GAME;
+        return GameState::END_GAME;
     }
-    return 0;
+    return GameState::CONTINUE;
 }
 
-int Map::shoot(int target)
+GameState Game::shoot(int target)
 {
     if(target != p.getAdj(0) && target != p.getAdj(1) && target != p.getAdj(2)){
         std::cout << "Invalid choice. Please target an ADJACENT room." << std::endl;
-        return 0;
+        return GameState::CONTINUE;
     }
     if(cave[target].wump){
         std::cout << "You killed the Wumpus! YOU WIN!" << std::endl;
-        return END_GAME;
+        return GameState::END_GAME;
     }
     else if(cave[p.getAdj(0)].wump || cave[p.getAdj(1)].wump || cave[p.getAdj(2)].wump)
         return moveWump();
+    
+    return GameState::CONTINUE;
 }
 
-void Map::batEncounter()
+void Game::batEncounter()
 {
     int r = rand()%vacant.size();
     cave[p.room()].player = false;
@@ -231,7 +239,7 @@ void Map::batEncounter()
     vacant.erase(vacant.begin()+r);
 }
 
-void Map::init()
+Game::Game()
 //set up map
 //place player, bats, pits and the wumpus
 {
@@ -255,23 +263,23 @@ void Map::init()
         vacant.push_back(p.getAdj(i));
 }
 
-void Map::play()
+void Game::play()
 {
     reportState();
-    while(input() != END_GAME){
+    while(input() != GameState::END_GAME){
         reportState();
     }
 }
 
-int Map::input()
+GameState Game::input()
 {
     char c = 0;
     int r = -1;
     std::cout << "Type mXX(sXX) to move(shoot) to(at) room XX." << std::endl;
     while(1){
         std::cout << "Enter command: ";
-        if(std::cin >> c >> r) { break; }
-        else if(std::cin.fail() || (c != 'm' && c != 's')){
+        if((std::cin >> c >> r) && (tolower(c) == 'm' || tolower(c) == 's') { break; }
+        else{
             std::cin.clear();
             std::cin.ignore(std::numeric_limits<int>::max(),'\n');
             std::cout << "Invalid input. Type mXX(sXX) to move(shoot) to(at) room XX." << std::endl;
@@ -283,8 +291,7 @@ int Map::input()
 int main()
 {
     srand(unsigned(time(0)));
-    Map game;
-    game.init();
+    Game game;
     game.play();
     //game.printState();
 }
